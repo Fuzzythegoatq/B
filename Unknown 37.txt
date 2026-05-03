@@ -1,0 +1,3099 @@
+getgenv().SecureMode = true      
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "Universal Hitbox Expander",
+    Text = "Made By Draco",
+    Duration = 5
+})
+
+local Window = Rayfield:CreateWindow({
+    Name = "Universal Hitbox Expander",
+    LoadingTitle = "Best HBE being loaded",
+    LoadingSubtitle = "Made By Draco",
+    Theme = "AmberGlow",
+ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "RayfieldHBE",
+        FileName = "HBEConfig"
+    },
+    Discord = { Enabled = false },
+    KeySystem = false
+})
+
+local MainTab = Window:CreateTab("Hitbox Expander", 4483362458)
+local FilterTab = Window:CreateTab("Filters", 4483362458)
+local ScriptTab = Window:CreateTab("Script", 4483362458)
+local EspTab = Window:CreateTab("ESP", 4483362458)
+local ThemesTab = Window:CreateTab("Themes", 4483362458)
+local CreditsTab = Window:CreateTab("Credits", 4483362458)
+
+ThemesTab:CreateDropdown({
+   Name = "Current Theme",
+   Options = {"Default", "AmberGlow", "Amethyst", "Bloom", "DarkBlue", "Green", "Light", "Ocean", "Serenity"},
+   CurrentOption = {"Default"},
+   MultipleOptions = false,
+   Flag = "CurrentTheme",
+   Callback = function(Options)
+        Window.ModifyTheme(Options[1])
+   end
+})
+
+ThemesTab:CreateParagraph({
+    Title = "Theme Selection",
+    Content = "Change the visual appearance of the UI. Select a theme from the dropdown above."
+})
+
+ThemesTab:CreateSection("Theme Preview")
+ThemesTab:CreateLabel("Default: Clean dark interface")
+ThemesTab:CreateLabel("AmberGlow: Warm orange tones")
+ThemesTab:CreateLabel("Amethyst: Purple theme")
+ThemesTab:CreateLabel("Bloom: Bright theme with light colors")
+ThemesTab:CreateLabel("DarkBlue: Deep blue interface")
+ThemesTab:CreateLabel("Green: Nature-inspired theme")
+ThemesTab:CreateLabel("Light: Bright minimal interface")
+ThemesTab:CreateLabel("Ocean: Blue sea colors")
+ThemesTab:CreateLabel("Serenity: Calm purple-blue mix")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+local Teams = game:GetService("Teams")
+
+local config = {
+    size = 5,
+    transparency = 0.5,
+    enabled = false,
+    npcEnabled = false,
+    npcSize = 5,
+    npcTransparency = 0.5,
+    collideEnabled = false,
+    npcCollideEnabled = false,
+    bypassDetection = false,
+    bypassMethods = {"Size Variation"},
+    invisibleHitbox = false,
+    legitMode = false,
+    offWallThreshold = 0.3,
+    hideTeammates = false,
+    attachToRoot = false,
+    rootSize = 5,
+    hideNPCHitboxes = false,
+    hideTeammateNPCs = false,
+    hideGreenzone = false,
+    hideWorkspaceZones = false,
+    hideInfiniteHealth = false
+}
+
+local function isInWorkspaceSafeZone(character)
+    if not character then return false end
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return false end
+    
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("Union") then
+            local name = obj.Name:lower()
+            if name:find("safe") or name:find("green") or name:find("zone") then
+                local objPos = obj.Position
+                local objSize = obj.Size
+                local charPos = rootPart.Position
+                
+                local withinX = math.abs(charPos.X - objPos.X) <= objSize.X/2
+                local withinY = math.abs(charPos.Y - objPos.Y) <= objSize.Y/2
+                local withinZ = math.abs(charPos.Z - objPos.Z) <= objSize.Z/2
+                
+                if withinX and withinY and withinZ then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local visibilityCache = {}
+
+local bypassRandomSize = 0
+local bypassRandomTransparency = 0
+local bypassRandomOffset = Vector3.new(0, 0, 0)
+local lastBypassUpdate = 0
+local bypassMethodsList = {"Size Variation", "Transparency Variation", "Position Offset", "Dynamic Scaling"}
+
+local filters = {
+    excludedPlayers = {},
+    excludedTeams = {},
+    forceIncludedPlayers = {},
+    hideWhenSitting = false,
+    hideFriends = false,
+    hideForceField = false,
+    excludedFriends = {}
+}
+
+local hitboxToggles = {
+    Head = true,
+    ["Left Arm"] = false,
+    ["Right Arm"] = false,
+    ["Left Leg"] = false,
+    ["Right Leg"] = false,
+    Torso = false,
+}
+
+local monitoredPlayers = {}
+local npcTracker = {
+    activeNPCs = {},
+    connections = {}
+}
+
+local hitboxPartsMap = {
+    Head = {"Head"},
+    ["Left Arm"] = {"LeftLowerArm", "LeftUpperArm"},
+    ["Right Arm"] = {"RightLowerArm", "RightUpperArm"},
+    ["Left Leg"] = {"LeftLowerLeg", "LeftUpperLeg"},
+    ["Right Leg"] = {"RightLowerLeg", "RightUpperLeg"},
+    Torso = {"Torso", "UpperTorso", "LowerTorso"}
+}
+
+local espConfig = {
+    enabled = false,
+    nameEnabled = true,
+    healthEnabled = true,
+    teamEnabled = true,
+    highlightEnabled = true,
+    bodyEsp = false,
+    bodyColor = Color3.fromRGB(0, 200, 255),
+    bodyParts = {
+        Head = true,
+        Torso = true,
+        ["Left Arm"] = false,
+        ["Right Arm"] = false,
+        ["Left Leg"] = false,
+        ["Right Leg"] = false
+    },
+    itemEspEnabled = false,
+    heldItemEnabled = true,
+    highlightColor = Color3.fromRGB(255, 0, 0),
+    textColor = Color3.fromRGB(255, 255, 255),
+    teamColor = Color3.fromRGB(100, 200, 255),
+    itemColor = Color3.fromRGB(0, 255, 0),
+    heldItemColor = Color3.fromRGB(255, 165, 0),
+    trackedItems = {"Gun", "Sword", "Ammo", "HealthPack"}
+}
+
+local bodyPartMap = {
+    Head = {"Head"},
+    Torso = {"UpperTorso", "LowerTorso", "Torso"},
+    ["Left Arm"] = {"LeftUpperArm", "LeftLowerArm", "LeftHand", "Left Arm"},
+    ["Right Arm"] = {"RightUpperArm", "RightLowerArm", "RightHand", "Right Arm"},
+    ["Left Leg"] = {"LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "Left Leg"},
+    ["Right Leg"] = {"RightUpperLeg", "RightLowerLeg", "RightFoot", "Right Leg"}
+}
+
+local espFilters = {
+    excludedTeams = {},
+    excludedPlayers = {}
+}
+
+local espData = {
+    players = {},
+    items = {}
+}
+
+local function isTeammate(player)
+    if player == LocalPlayer then return true end
+    
+    local gameId = game.GameId
+    local placeId = game.PlaceId
+
+    if gameId == 718936923 then 
+        local lChar = LocalPlayer.Character
+        local pChar = player.Character
+        if not lChar or not pChar then return true end
+        local lRoot = lChar:FindFirstChild("HumanoidRootPart")
+        local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+        if not lRoot or not pRoot then return true end
+        return lRoot.Color == pRoot.Color
+
+    elseif placeId == 633284182 then 
+        if not player:FindFirstChild("PlayerData") or not LocalPlayer:FindFirstChild("PlayerData") then return true end
+        local pTeam = player.PlayerData:FindFirstChild("TeamValue")
+        local lTeam = LocalPlayer.PlayerData:FindFirstChild("TeamValue")
+        if not pTeam or not lTeam then return true end
+        return lTeam.Value == pTeam.Value
+
+    elseif placeId == 2029250188 then 
+        local lChar = LocalPlayer.Character
+        local pChar = player.Character
+        if not lChar or not pChar then return true end
+        return lChar.Parent == pChar.Parent
+
+    elseif placeId == 2978450615 then 
+        local renv = getrenv()
+        if not renv or not renv.G then return true end
+        local profiles = renv.G.PlayerProfiles
+        if not profiles or not profiles.Data then return true end
+        return profiles.Data[LocalPlayer.Name].Team == profiles.Data[player.Name].Team
+
+    elseif gameId == 1934496708 then 
+        if Workspace:FindFirstChild("FriendlyFire") and Workspace.FriendlyFire.Value then 
+            return false 
+        end
+        if not player.Team or not LocalPlayer.Team then return true end
+        return player.Team == LocalPlayer.Team
+
+    elseif placeId == 2622527242 then 
+        return player.Team == LocalPlayer.Team
+
+    else
+        return player.Team == LocalPlayer.Team
+    end
+end
+
+local sharedRaycastParams = RaycastParams.new()
+sharedRaycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+sharedRaycastParams.IgnoreWater = true
+
+local bodyPartsToCheck = {
+    "Head",
+    "Torso",
+    "UpperTorso",
+    "LowerTorso",
+    "LeftUpperArm",
+    "LeftLowerArm",
+    "LeftHand",
+    "RightUpperArm",
+    "RightLowerArm",
+    "RightHand"
+}
+
+local function isPartVisible(targetPart, origin, raycastParams)
+    if not targetPart then return false end
+    
+    local targetPos = targetPart.Position
+    local direction = (targetPos - origin).Unit
+    local distance = (targetPos - origin).Magnitude
+    
+    local raycastResult = Workspace:Raycast(origin, direction * distance, raycastParams)
+    
+    if raycastResult then
+        local hitPart = raycastResult.Instance
+        return hitPart:IsDescendantOf(targetPart.Parent)
+    end
+    
+    return true
+end
+
+local function isAnyBodyPartVisible(character, origin, raycastParams)
+    if not character then return false end
+    
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if rootPart and isPartVisible(rootPart, origin, raycastParams) then
+        return true
+    end
+    
+    for _, partName in ipairs(bodyPartsToCheck) do
+        local part = character:FindFirstChild(partName)
+        if part and isPartVisible(part, origin, raycastParams) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+local function applyBypassTechniques(part, isNPC)
+    if not config.bypassDetection or not part then return end
+    
+    local currentTime = tick()
+    if currentTime - lastBypassUpdate > 1.5 then
+        bypassRandomSize = math.random(80, 120) / 100
+        bypassRandomTransparency = math.random(-20, 20) / 100
+        bypassRandomOffset = Vector3.new(math.random(-5,5)/10, math.random(-5,5)/10, math.random(-5,5)/10)
+        lastBypassUpdate = currentTime
+    end
+    
+    local actualSize = isNPC and config.npcSize or config.size
+    local actualTransparency = isNPC and config.npcTransparency or config.transparency
+    
+    for _, method in ipairs(config.bypassMethods) do
+        if method == "Size Variation" then
+            part.Size = Vector3.new(actualSize * bypassRandomSize, actualSize * bypassRandomSize, actualSize * bypassRandomSize)
+        elseif method == "Transparency Variation" then
+            part.Transparency = math.clamp(actualTransparency + bypassRandomTransparency, 0, 1)
+        elseif method == "Position Offset" then
+            part.CFrame = part.CFrame + bypassRandomOffset
+        elseif method == "Dynamic Scaling" then
+            local scale = 0.8 + math.sin(tick()) * 0.2
+            part.Size = Vector3.new(actualSize * scale, actualSize * scale, actualSize * scale)
+        end
+    end
+end
+
+local function isTeammateNPC(model)
+    if not model then return false end
+    
+    if Players:GetPlayerFromCharacter(model) then
+        return false
+    end
+    
+    local teamValue = model:FindFirstChild("Team") or model:FindFirstChild("TeamValue")
+    if teamValue then
+        if teamValue:IsA("StringValue") then
+            return teamValue.Value == (LocalPlayer.Team and LocalPlayer.Team.Name or "None")
+        elseif teamValue:IsA("ObjectValue") and teamValue.Value then
+            return teamValue.Value == LocalPlayer.Team
+        end
+    end
+    
+    if model:IsDescendantOf(LocalPlayer.Team) then
+        return true
+    end
+    
+    local npcRoot = model:FindFirstChild("HumanoidRootPart")
+    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if npcRoot and localRoot and npcRoot.Color == localRoot.Color then
+        return true
+    end
+    
+    return false
+end
+
+local function getTeamList()
+    local teamList = {}
+    for _, team in ipairs(Teams:GetTeams()) do
+        table.insert(teamList, team.Name)
+    end
+    return teamList
+end
+
+local function getPlayerList()
+    local playerList = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(playerList, player.Name)
+        end
+    end
+    return playerList
+end
+
+local function isFriend(player)
+    local success, result = pcall(function()
+        return LocalPlayer:IsFriendsWith(player.UserId)
+    end)
+    return success and result
+end
+
+local function getFriendList()
+    local friendList = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and isFriend(player) then
+            table.insert(friendList, player.Name)
+        end
+    end
+    return friendList
+end
+
+local function shouldShowHitbox(player)
+    if filters.forceIncludedPlayers[player.Name] then
+        return true
+    end
+    if filters.excludedPlayers[player.Name] then
+        return false
+    end
+    if player.Team and filters.excludedTeams[player.Team.Name] then
+        return false
+    end
+    
+    if filters.excludedFriends[player.Name] then
+        return false
+    end
+    
+    if filters.hideFriends and isFriend(player) then
+        return false
+    end
+    
+    if config.hideTeammates and isTeammate(player) then
+        return false
+    end
+    
+    if config.hideGreenzone and player.Team then
+        local teamName = player.Team.Name:lower()
+        if teamName:find("green") or teamName:find("safe") then
+            return false
+        end
+    end
+    
+    if config.hideWorkspaceZones then
+        local char = player.Character
+        if char and isInWorkspaceSafeZone(char) then
+            return false
+        end
+    end
+    
+    if config.hideInfiniteHealth then
+        local char = player.Character
+        if char then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid and (humanoid.Health >= 1e+300 or humanoid.MaxHealth >= 1e+300) then
+                return false
+            end
+        end
+    end
+    
+    local char = player.Character
+    if char then
+        if filters.hideWhenSitting then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Sit then
+                return false
+            end
+        end
+        if filters.hideForceField and char:FindFirstChildOfClass("ForceField") then
+            return false
+        end
+    end
+    return true
+end
+
+local defaultProperties = {}
+
+local function cacheDefaults(character)
+    if not character then return end
+    for _, part in pairs(character:GetChildren()) do
+        if part:IsA("BasePart") then
+            if not defaultProperties[part] then
+                defaultProperties[part] = {
+                    Size = part.Size,
+                    Transparency = part.Transparency,
+                    CanCollide = part.CanCollide,
+                    Massless = part.Massless
+                }
+            end
+        end
+    end
+end
+
+local function resetPart(part)
+    if not part then return end
+    local def = defaultProperties[part]
+    if def then
+        part.Size = def.Size
+        part.Transparency = def.Transparency
+        part.CanCollide = def.CanCollide
+        part.Massless = def.Massless
+        part.LocalTransparencyModifier = 0
+    end
+end
+
+local function applyToPart(part, size, transparency, isNPC)
+    if not part then return end
+    
+    if config.attachToRoot and part.Name == "HumanoidRootPart" then
+        local actualSize = isNPC and config.npcSize or config.rootSize
+        local actualTransparency = isNPC and config.npcTransparency or config.transparency
+        
+        if config.invisibleHitbox then
+            part.LocalTransparencyModifier = 1
+        else
+            part.LocalTransparencyModifier = 0
+        end
+        
+        if config.bypassDetection then
+            applyBypassTechniques(part, isNPC)
+        else
+            part.Size = Vector3.new(actualSize, actualSize, actualSize)
+            part.Transparency = actualTransparency
+        end
+        
+        part.CanCollide = false
+        part.Massless = true
+        return
+    end
+    
+    local actualSize = isNPC and config.npcSize or size
+    local actualTransparency = isNPC and config.npcTransparency or transparency
+    
+    if config.invisibleHitbox then
+        part.LocalTransparencyModifier = 1
+    else
+        part.LocalTransparencyModifier = 0
+    end
+    
+    if config.bypassDetection then
+        applyBypassTechniques(part, isNPC)
+    else
+        part.Size = Vector3.new(actualSize, actualSize, actualSize)
+        part.Transparency = actualTransparency
+    end
+    
+    part.CanCollide = false
+    part.Massless = true
+end
+
+local function applyNPCHitbox(model)
+    if not model then return end
+    
+    if config.hideWorkspaceZones and isInWorkspaceSafeZone(model) then
+        for _, partsList in pairs(hitboxPartsMap) do
+            for _, partName in ipairs(partsList) do
+                local part = model:FindFirstChild(partName)
+                if part then resetPart(part) end
+            end
+        end
+        return
+    end
+    
+    if config.hideNPCHitboxes then
+        for _, partsList in pairs(hitboxPartsMap) do
+            for _, partName in ipairs(partsList) do
+                local part = model:FindFirstChild(partName)
+                if part then
+                    resetPart(part)
+                end
+            end
+        end
+        return
+    end
+    
+    if config.hideTeammateNPCs and isTeammateNPC(model) then
+        for _, partsList in pairs(hitboxPartsMap) do
+            for _, partName in ipairs(partsList) do
+                local part = model:FindFirstChild(partName)
+                if part then
+                    resetPart(part)
+                end
+            end
+        end
+        return
+    end
+    
+    if config.hideGreenzone then
+        local teamValue = model:FindFirstChild("Team") or model:FindFirstChild("TeamValue")
+        if teamValue then
+            local teamName = tostring(teamValue.Value):lower()
+            if teamName:find("green") or teamName:find("safe") then
+                for _, partsList in pairs(hitboxPartsMap) do
+                    for _, partName in ipairs(partsList) do
+                        local part = model:FindFirstChild(partName)
+                        if part then resetPart(part) end
+                    end
+                end
+                return
+            end
+        end
+    end
+    
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        for _, partsList in pairs(hitboxPartsMap) do
+            for _, partName in ipairs(partsList) do
+                local part = model:FindFirstChild(partName)
+                if part then
+                    resetPart(part)
+                end
+            end
+        end
+        return
+    end
+
+    local isNPCVisible = visibilityCache[model] or true
+    if config.legitMode and config.npcEnabled then
+        isNPCVisible = visibilityCache[model] or false
+    end
+
+    if not config.enabled or not config.npcEnabled or not isNPCVisible then
+        for _, partsList in pairs(hitboxPartsMap) do
+            for _, partName in ipairs(partsList) do
+                local part = model:FindFirstChild(partName)
+                if part then
+                    resetPart(part)
+                end
+            end
+        end
+        return
+    end
+
+    cacheDefaults(model)
+    
+    if config.attachToRoot then
+        local rootPart = model:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            applyToPart(rootPart, config.rootSize, config.transparency, true)
+        end
+        return
+    end
+
+    for hitboxType, enabled in pairs(hitboxToggles) do
+        local partsList = hitboxPartsMap[hitboxType]
+        if enabled and partsList then
+            for _, partName in ipairs(partsList) do
+                local part = model:FindFirstChild(partName)
+                if part then
+                    applyToPart(part, config.size, config.transparency, true)
+                end
+            end
+        else
+            if partsList then
+                for _, partName in ipairs(partsList) do
+                    local part = model:FindFirstChild(partName)
+                    if part then
+                        resetPart(part)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function applyHitbox(player)
+    if player == LocalPlayer then return end
+
+    if not monitoredPlayers[player] then
+        monitoredPlayers[player] = true
+
+        player.CharacterAdded:Connect(function(char)
+            char:WaitForChild("Humanoid", 5)
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:GetPropertyChangedSignal("Sit"):Connect(function()
+                    applyHitbox(player)
+                end)
+            end
+            char.ChildAdded:Connect(function(child)
+                if child:IsA("ForceField") then
+                    applyHitbox(player)
+                end
+            end)
+            char.ChildRemoved:Connect(function(child)
+                if child:IsA("ForceField") then
+                    applyHitbox(player)
+                end
+            end)
+            task.wait(0.2)
+            applyHitbox(player)
+        end)
+
+        if player.Character then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:GetPropertyChangedSignal("Sit"):Connect(function()
+                    applyHitbox(player)
+                end)
+            end
+            player.Character.ChildAdded:Connect(function(child)
+                if child:IsA("ForceField") then
+                    applyHitbox(player)
+                end
+            end)
+            player.Character.ChildRemoved:Connect(function(child)
+                if child:IsA("ForceField") then
+                    applyHitbox(player)
+                end
+            end)
+            task.delay(0.3, function()
+                applyHitbox(player)
+            end)
+        end
+    end
+
+    local char = player.Character
+    if not char then return end
+
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        for _, partsList in pairs(hitboxPartsMap) do
+            for _, partName in ipairs(partsList) do
+                local part = char:FindFirstChild(partName)
+                if part then
+                    resetPart(part)
+                end
+            end
+        end
+        return
+    end
+
+    local isPlayerVisible = visibilityCache[player] or true
+    if config.legitMode then
+        isPlayerVisible = visibilityCache[player] or false
+    end
+
+    if not config.enabled or not shouldShowHitbox(player) or not isPlayerVisible then
+        for _, partsList in pairs(hitboxPartsMap) do
+            for _, partName in ipairs(partsList) do
+                local part = char:FindFirstChild(partName)
+                if part then
+                    resetPart(part)
+                end
+            end
+        end
+        return
+    end
+
+    cacheDefaults(char)
+    
+    if config.attachToRoot then
+        local rootPart = char:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            applyToPart(rootPart, config.rootSize, config.transparency, false)
+        end
+        return
+    end
+
+    for hitboxType, enabled in pairs(hitboxToggles) do
+        local partsList = hitboxPartsMap[hitboxType]
+        if enabled and partsList then
+            for _, partName in ipairs(partsList) do
+                local part = char:FindFirstChild(partName)
+                if part then
+                    applyToPart(part, config.size, config.transparency, false)
+                end
+            end
+        else
+            if partsList then
+                for _, partName in ipairs(partsList) do
+                    local part = char:FindFirstChild(partName)
+                    if part then
+                        resetPart(part)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function updateAllHitboxes()
+    for player, _ in pairs(monitoredPlayers) do
+        applyHitbox(player)
+    end
+    for model, _ in pairs(npcTracker.activeNPCs) do
+        applyNPCHitbox(model)
+    end
+end
+
+local npcList = {}
+
+local function trackNPC(part)
+    if part:IsA("BasePart") and part.Name == "HumanoidRootPart" then
+        local model = part.Parent
+        if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") and 
+           not Players:GetPlayerFromCharacter(model) and not npcTracker.activeNPCs[model] then
+            
+            table.insert(npcList, model)
+            npcTracker.activeNPCs[model] = true
+            
+            local humanoid = model:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                local healthConn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                    applyNPCHitbox(model)
+                end)
+                
+                local diedConn = humanoid.Died:Connect(function()
+                    applyNPCHitbox(model)
+                    
+                    local respawnConn
+                    respawnConn = model.AncestryChanged:Connect(function(_, parent)
+                        if parent == Workspace then
+                            task.wait(0.1)
+                            applyNPCHitbox(model)
+                            respawnConn:Disconnect()
+                        end
+                    end)
+                end)
+                
+                npcTracker.connections[model] = {
+                    healthConn,
+                    diedConn
+                }
+            end
+            
+            local ancestryConn = model.AncestryChanged:Connect(function(_, parent)
+                if not parent then
+                    if npcTracker.connections[model] then
+                        for _, conn in ipairs(npcTracker.connections[model]) do
+                            conn:Disconnect()
+                        end
+                    end
+                    npcTracker.activeNPCs[model] = nil
+                    npcTracker.connections[model] = nil
+                    
+                    for i, npc in ipairs(npcList) do
+                        if npc == model then
+                            table.remove(npcList, i)
+                            break
+                        end
+                    end
+                end
+            end)
+            
+            table.insert(npcTracker.connections[model], ancestryConn)
+            
+            applyNPCHitbox(model)
+        end
+    end
+end
+
+local function setupNPCMonitoring()
+    for _, part in ipairs(Workspace:GetDescendants()) do
+        trackNPC(part)
+    end
+
+    Workspace.DescendantAdded:Connect(trackNPC)
+end
+
+local function createHighlight(character, color)
+    if not character then return nil end
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = character
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.FillColor = color
+    highlight.FillTransparency = 0.5
+    highlight.OutlineColor = color
+    highlight.OutlineTransparency = 0
+    highlight.Parent = character
+    
+    return highlight
+end
+
+local function createBillboard(character)
+    if not character then return nil end
+    
+    local head = character:FindFirstChild("Head")
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local primaryPart = character.PrimaryPart
+    
+    local adornee = head or humanoidRootPart or primaryPart
+    if not adornee then return nil end
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Adornee = adornee
+    billboard.Size = UDim2.new(0, 200, 0, 100)
+    billboard.StudsOffset = Vector3.new(0, 4, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = character
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "NameLabel"
+    nameLabel.Size = UDim2.new(1, 0, 0.25, 0)
+    nameLabel.Position = UDim2.new(0, 0, 0, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextColor3 = espConfig.textColor
+    nameLabel.TextSize = 14
+    nameLabel.Text = "Player"
+    nameLabel.Visible = espConfig.nameEnabled and espConfig.enabled
+    nameLabel.Parent = billboard
+    
+    local healthLabel = Instance.new("TextLabel")
+    healthLabel.Name = "HealthLabel"
+    healthLabel.Size = UDim2.new(1, 0, 0.25, 0)
+    healthLabel.Position = UDim2.new(0, 0, 0.25, 0)
+    healthLabel.BackgroundTransparency = 1
+    healthLabel.TextColor3 = espConfig.textColor
+    healthLabel.TextSize = 12
+    healthLabel.Text = "HP: 100/100"
+    healthLabel.Visible = espConfig.healthEnabled and espConfig.enabled
+    healthLabel.Parent = billboard
+    
+    local teamLabel = Instance.new("TextLabel")
+    teamLabel.Name = "TeamLabel"
+    teamLabel.Size = UDim2.new(1, 0, 0.25, 0)
+    teamLabel.Position = UDim2.new(0, 0, 0.5, 0)
+    teamLabel.BackgroundTransparency = 1
+    teamLabel.TextColor3 = espConfig.teamColor
+    teamLabel.TextSize = 12
+    teamLabel.Text = "Team: None"
+    teamLabel.Visible = espConfig.teamEnabled and espConfig.enabled
+    teamLabel.Parent = billboard
+    
+    local heldItemLabel = Instance.new("TextLabel")
+    heldItemLabel.Name = "HeldItemLabel"
+    heldItemLabel.Size = UDim2.new(1, 0, 0.25, 0)
+    heldItemLabel.Position = UDim2.new(0, 0, 0.75, 0)
+    heldItemLabel.BackgroundTransparency = 1
+    heldItemLabel.TextColor3 = espConfig.heldItemColor
+    heldItemLabel.TextSize = 12
+    heldItemLabel.Text = "Holding: None"
+    heldItemLabel.Visible = espConfig.heldItemEnabled and espConfig.enabled
+    heldItemLabel.Parent = billboard
+    
+    return billboard
+end
+
+local function getHeldItem(player)
+    if not player.Character then return "None" end
+    
+    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        local equippedTool = humanoid:FindFirstChildOfClass("Tool")
+        if equippedTool then
+            return equippedTool.Name
+        end
+    end
+    
+    local rightHand = player.Character:FindFirstChild("RightHand") or player.Character:FindFirstChild("Right Arm")
+    if rightHand then
+        for _, child in ipairs(rightHand:GetChildren()) do
+            if child:IsA("Tool") or child:IsA("Part") then
+                return child.Name
+            end
+        end
+    end
+    
+    local leftHand = player.Character:FindFirstChild("LeftHand") or player.Character:FindFirstChild("Left Arm")
+    if leftHand then
+        for _, child in ipairs(leftHand:GetChildren()) do
+            if child:IsA("Tool") or child:IsA("Part") then
+                return child.Name
+            end
+        end
+    end
+    
+    return "None"
+end
+
+local function setupPlayerEsp(player)
+    if not player or player == LocalPlayer then return end
+    
+    if espData.players[player] then
+        for _, conn in ipairs(espData.players[player].connections) do
+            conn:Disconnect()
+        end
+        if espData.players[player].highlight then
+            espData.players[player].highlight:Destroy()
+        end
+        if espData.players[player].bodyHighlights then
+            for _, highlight in ipairs(espData.players[player].bodyHighlights) do
+                highlight:Destroy()
+            end
+        end
+        if espData.players[player].billboard then
+            espData.players[player].billboard:Destroy()
+        end
+    end
+    
+    espData.players[player] = {
+        highlight = nil,
+        bodyHighlights = {},
+        billboard = nil,
+        connections = {}
+    }
+    
+    local data = espData.players[player]
+    
+    local function applyEspToCharacter(char)
+        if not char or not char.Parent then return end
+        
+        if espConfig.enabled and espConfig.highlightEnabled then
+            data.highlight = createHighlight(char, espConfig.highlightColor)
+            data.highlight.Enabled = true
+        end
+        
+        if espConfig.enabled and espConfig.bodyEsp then
+            for partName, enabled in pairs(espConfig.bodyParts) do
+                if enabled then
+                    local partList = bodyPartMap[partName]
+                    if partList then
+                        for _, actualPartName in ipairs(partList) do
+                            local part = char:FindFirstChild(actualPartName)
+                            if part then
+                                local highlight = Instance.new("Highlight")
+                                highlight.Adornee = part
+                                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                highlight.FillColor = espConfig.bodyColor
+                                highlight.FillTransparency = 0.7
+                                highlight.OutlineColor = espConfig.bodyColor
+                                highlight.OutlineTransparency = 0.3
+                                highlight.Parent = part
+                                
+                                table.insert(data.bodyHighlights, highlight)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if espConfig.enabled then
+            data.billboard = createBillboard(char)
+            if data.billboard:FindFirstChild("NameLabel") then
+                data.billboard.NameLabel.Text = player.Name
+                data.billboard.NameLabel.Visible = espConfig.nameEnabled
+            end
+            if data.billboard:FindFirstChild("TeamLabel") then
+                data.billboard.TeamLabel.Text = "Team: " .. (player.Team and player.Team.Name or "None")
+                data.billboard.TeamLabel.Visible = espConfig.teamEnabled
+            end
+            data.billboard.Enabled = true
+        end
+        
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            local healthConn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                if data.billboard and data.billboard:FindFirstChild("HealthLabel") then
+                    data.billboard.HealthLabel.Text = string.format("HP: %d/%d", humanoid.Health, humanoid.MaxHealth)
+                end
+            end)
+            table.insert(data.connections, healthConn)
+            
+            local diedConn = humanoid.Died:Connect(function()
+                if data.highlight then
+                    data.highlight:Destroy()
+                    data.highlight = nil
+                end
+                if data.bodyHighlights then
+                    for _, highlight in ipairs(data.bodyHighlights) do
+                        highlight:Destroy()
+                    end
+                    data.bodyHighlights = {}
+                end
+                if data.billboard then
+                    data.billboard:Destroy()
+                    data.billboard = nil
+                end
+            end)
+            table.insert(data.connections, diedConn)
+        end
+    
+        local teamConn = player:GetPropertyChangedSignal("Team"):Connect(function()
+            if data.billboard and data.billboard:FindFirstChild("TeamLabel") then
+                data.billboard.TeamLabel.Text = "Team: " .. (player.Team and player.Team.Name or "None")
+            end
+            updatePlayerEsp(player)
+        end)
+        table.insert(data.connections, teamConn)
+        
+        local function updateHeldItem()
+            if data.billboard and data.billboard:FindFirstChild("HeldItemLabel") then
+                data.billboard.HeldItemLabel.Text = "Holding: " .. getHeldItem(player)
+            end
+        end
+        
+        local backpack = player:FindFirstChild("Backpack")
+        if backpack then
+            local backpackConn = backpack.ChildAdded:Connect(updateHeldItem)
+            table.insert(data.connections, backpackConn)
+            
+            local backpackRemovedConn = backpack.ChildRemoved:Connect(updateHeldItem)
+            table.insert(data.connections, backpackRemovedConn)
+        end
+        
+        local charToolConn = char.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                updateHeldItem()
+            end
+        end)
+        table.insert(data.connections, charToolConn)
+        
+        local charToolRemovedConn = char.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") then
+                updateHeldItem()
+            end
+        end)
+        table.insert(data.connections, charToolRemovedConn)
+        
+        local function onCharacterDescendant(descendant)
+            if descendant:IsA("BasePart") then
+                if data.highlight then
+                    data.highlight.Adornee = char
+                end
+            end
+        end
+        
+        char.DescendantAdded:Connect(onCharacterDescendant)
+        table.insert(data.connections, char.DescendantAdded:Connect(onCharacterDescendant))
+    end
+
+    local function onCharacterAdded(char)
+        local rootPart = char:WaitForChild("HumanoidRootPart", 3)
+        local humanoid = char:WaitForChild("Humanoid", 3)
+        
+        if rootPart and humanoid then
+            applyEspToCharacter(char)
+        else
+            task.spawn(function()
+                task.wait(0.5)
+                if char:IsDescendantOf(Workspace) then
+                    applyEspToCharacter(char)
+                end
+            end)
+        end
+    end
+
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
+
+    local charAddedConn = player.CharacterAdded:Connect(onCharacterAdded)
+    table.insert(data.connections, charAddedConn)
+
+    local playerRemovingConn = player.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            if data.highlight then data.highlight:Destroy() end
+            if data.bodyHighlights then
+                for _, highlight in ipairs(data.bodyHighlights) do
+                    highlight:Destroy()
+                end
+            end
+            if data.billboard then data.billboard:Destroy() end
+            for _, conn in ipairs(data.connections) do conn:Disconnect() end
+            espData.players[player] = nil
+        end
+    end)
+    table.insert(data.connections, playerRemovingConn)
+end
+
+local function updateItemEsp()
+    if not espConfig.enabled or not espConfig.itemEspEnabled then
+        for item, itemData in pairs(espData.items) do
+            if itemData.highlight then itemData.highlight:Destroy() end
+            if itemData.billboard then itemData.billboard:Destroy() end
+        end
+        espData.items = {}
+        return
+    end
+    
+    local trackedItems = {}
+    for _, itemName in ipairs(espConfig.trackedItems) do
+        trackedItems[itemName:lower()] = true
+    end
+    
+    for _, instance in ipairs(Workspace:GetDescendants()) do
+        if not espData.items[instance] and trackedItems[instance.Name:lower()] then
+            local highlight = createHighlight(instance, espConfig.itemColor)
+            highlight.Enabled = true
+            
+            local billboard = Instance.new("BillboardGui")
+            billboard.Adornee = instance
+            billboard.Size = UDim2.new(0, 150, 0, 30)
+            billboard.StudsOffset = Vector3.new(0, 2, 0)
+            billboard.AlwaysOnTop = true
+            billboard.Enabled = true
+            billboard.Parent = instance
+            
+            local itemLabel = Instance.new("TextLabel")
+            itemLabel.Size = UDim2.new(1, 0, 1, 0)
+            itemLabel.BackgroundTransparency = 1
+            itemLabel.TextColor3 = espConfig.itemColor
+            itemLabel.TextSize = 12
+            itemLabel.Text = instance.Name
+            itemLabel.Parent = billboard
+            
+            espData.items[instance] = {
+                highlight = highlight,
+                billboard = billboard
+            }
+        end
+    end
+
+    for item, itemData in pairs(espData.items) do
+        if not item:IsDescendantOf(Workspace) then
+            if itemData.highlight then itemData.highlight:Destroy() end
+            if itemData.billboard then itemData.billboard:Destroy() end
+            espData.items[item] = nil
+        end
+    end
+end
+
+local function updatePlayerEsp(player)
+    if not espData.players[player] then return end
+    
+    local data = espData.players[player]
+    local char = player.Character
+    
+    local teamExcluded = false
+    if player.Team and espFilters.excludedTeams[player.Team.Name] then
+        teamExcluded = true
+    end
+    
+    local playerExcluded = espFilters.excludedPlayers[player.Name]
+    
+    if not char then
+        if data.highlight then
+            data.highlight:Destroy()
+            data.highlight = nil
+        end
+        if data.bodyHighlights then
+            for _, highlight in ipairs(data.bodyHighlights) do
+                highlight:Destroy()
+            end
+            data.bodyHighlights = {}
+        end
+        if data.billboard then
+            data.billboard:Destroy()
+            data.billboard = nil
+        end
+    else
+        if data.highlight then
+            data.highlight.Enabled = espConfig.enabled and espConfig.highlightEnabled and not teamExcluded and not playerExcluded
+            data.highlight.FillColor = espConfig.highlightColor
+            data.highlight.OutlineColor = espConfig.highlightColor
+        end
+        
+        if data.bodyHighlights then
+            for _, highlight in ipairs(data.bodyHighlights) do
+                highlight:Destroy()
+            end
+            data.bodyHighlights = {}
+        end
+        
+        if espConfig.enabled and espConfig.bodyEsp and not teamExcluded and not playerExcluded then
+            for partName, enabled in pairs(espConfig.bodyParts) do
+                if enabled then
+                    local partList = bodyPartMap[partName]
+                    if partList then
+                        for _, actualPartName in ipairs(partList) do
+                            local part = char:FindFirstChild(actualPartName)
+                            if part then
+                                local highlight = Instance.new("Highlight")
+                                highlight.Adornee = part
+                                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                highlight.FillColor = espConfig.bodyColor
+                                highlight.FillTransparency = 0.7
+                                highlight.OutlineColor = espConfig.bodyColor
+                                highlight.OutlineTransparency = 0.3
+                                highlight.Parent = part
+                                
+                                table.insert(data.bodyHighlights, highlight)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if data.billboard then
+            data.billboard.Enabled = espConfig.enabled and not teamExcluded and not playerExcluded
+            
+            if data.billboard:FindFirstChild("NameLabel") then
+                data.billboard.NameLabel.Visible = espConfig.nameEnabled
+                data.billboard.NameLabel.TextColor3 = espConfig.textColor
+            end
+            
+            if data.billboard:FindFirstChild("HealthLabel") then
+                data.billboard.HealthLabel.Visible = espConfig.healthEnabled
+                data.billboard.HealthLabel.TextColor3 = espConfig.textColor
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    data.billboard.HealthLabel.Text = string.format("HP: %d/%d", humanoid.Health, humanoid.MaxHealth)
+                end
+            end
+            
+            if data.billboard:FindFirstChild("TeamLabel") then
+                data.billboard.TeamLabel.Visible = espConfig.teamEnabled
+                data.billboard.TeamLabel.TextColor3 = espConfig.teamColor
+                data.billboard.TeamLabel.Text = "Team: " .. (player.Team and player.Team.Name or "None")
+            end
+            
+            if data.billboard:FindFirstChild("HeldItemLabel") then
+                data.billboard.HeldItemLabel.Visible = espConfig.heldItemEnabled
+                data.billboard.HeldItemLabel.TextColor3 = espConfig.heldItemColor
+                data.billboard.HeldItemLabel.Text = "Holding: " .. getHeldItem(player)
+            end
+        end
+        
+        if espConfig.enabled and not teamExcluded and not playerExcluded then
+            if espConfig.highlightEnabled and not data.highlight then
+                data.highlight = createHighlight(char, espConfig.highlightColor)
+            end
+            if espConfig.bodyEsp and not data.bodyHighlights then
+                data.bodyHighlights = {}
+                for partName, enabled in pairs(espConfig.bodyParts) do
+                    if enabled then
+                        local partList = bodyPartMap[partName]
+                        if partList then
+                            for _, actualPartName in ipairs(partList) do
+                                local part = char:FindFirstChild(actualPartName)
+                                if part then
+                                    local highlight = Instance.new("Highlight")
+                                    highlight.Adornee = part
+                                    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                    highlight.FillColor = espConfig.bodyColor
+                                    highlight.FillTransparency = 0.7
+                                    highlight.OutlineColor = espConfig.bodyColor
+                                    highlight.OutlineTransparency = 0.3
+                                    highlight.Parent = part
+                                    
+                                    table.insert(data.bodyHighlights, highlight)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            if not data.billboard then
+                data.billboard = createBillboard(char)
+                if data.billboard:FindFirstChild("NameLabel") then
+                    data.billboard.NameLabel.Text = player.Name
+                end
+                if data.billboard:FindFirstChild("TeamLabel") then
+                    data.billboard.TeamLabel.Text = "Team: " .. (player.Team and player.Team.Name or "None")
+                end
+            end
+        end
+    end
+end
+
+local function updateAllEsp()
+    for _, player in ipairs(Players:GetPlayers()) do
+        updatePlayerEsp(player)
+    end
+    
+    updateItemEsp()
+end
+
+local function initializeEsp()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            setupPlayerEsp(player)
+        end
+    end
+    
+    Players.PlayerAdded:Connect(function(player)
+        if player ~= LocalPlayer then
+            setupPlayerEsp(player)
+        end
+    end)
+    
+    Workspace.DescendantAdded:Connect(function(descendant)
+        if espConfig.enabled and espConfig.itemEspEnabled then
+            updateItemEsp()
+        end
+    end)
+    
+    updateItemEsp()
+end
+
+initializeEsp()
+
+MainTab:CreateToggle({
+    Name = "Enable Hitbox Expander",
+    CurrentValue = config.enabled,
+    Flag = "HitboxToggle",
+    Callback = function(Value)
+        config.enabled = Value
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateKeybind({
+    Name = "Toggle Hitbox Expander",
+    CurrentKeybind = "U",
+    HoldToInteract = false,
+    Flag = "HitboxToggleKeybind",
+    Callback = function(Key)
+        config.enabled = not config.enabled
+        updateAllHitboxes()
+        Rayfield:Notify({
+            Title = "Hitbox Expander",
+            Content = "Hitboxes are now " .. (config.enabled and "ENABLED" or "DISABLED"),
+            Duration = 3,
+            Image = 4483362458
+        })
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Enable NPC Hitboxes",
+    CurrentValue = config.npcEnabled,
+    Flag = "NPCToggle",
+    Callback = function(Value)
+        config.npcEnabled = Value
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateLabel("Player Settings")
+MainTab:CreateSlider({
+    Name = "Hitbox Size",
+    Range = {2, 200},
+    Increment = 1,
+    Suffix = "Size",
+    CurrentValue = config.size,
+    Flag = "SizeSlider",
+    Callback = function(Value)
+        config.size = Value
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "Transparency",
+    Range = {0, 1},
+    Increment = 0.05,
+    Suffix = "",
+    CurrentValue = config.transparency,
+    Flag = "TransparencySlider",
+    Callback = function(Value)
+        config.transparency = Value
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Enable Collide (Players)",
+    CurrentValue = config.collideEnabled,
+    Flag = "CollideToggle",
+    Callback = function(Value)
+        config.collideEnabled = Value
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateLabel("NPC Settings")
+MainTab:CreateSlider({
+    Name = "NPC Hitbox Size",
+    Range = {2, 200},
+    Increment = 1,
+    Suffix = "Size",
+    CurrentValue = config.npcSize,
+    Flag = "NPCSizeSlider",
+    Callback = function(Value)
+        config.npcSize = Value
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "NPC Transparency",
+    Range = {0, 1},
+    Increment = 0.05,
+    Suffix = "",
+    CurrentValue = config.npcTransparency,
+    Flag = "NPCTransparencySlider",
+    Callback = function(Value)
+        config.npcTransparency = Value
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Enable Collide (NPCs)",
+    CurrentValue = config.npcCollideEnabled,
+    Flag = "NPCCollideToggle",
+    Callback = function(Value)
+        config.npcCollideEnabled = Value
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateSection("Manual Size Input")
+
+MainTab:CreateInput({
+    Name = "Player Hitbox Size",
+    PlaceholderText = tostring(config.size),
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        local num = tonumber(Text)
+        if num and num >= 2 and num <= 200 then
+            config.size = num
+            updateAllHitboxes()
+            Rayfield:Notify({
+                Title = "Player Size Updated",
+                Content = "Player hitbox size set to " .. num,
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            Rayfield:Notify({
+                Title = "Invalid Input",
+                Content = "Please enter a number between 2 and 200",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+MainTab:CreateInput({
+    Name = "NPC Hitbox Size",
+    PlaceholderText = tostring(config.npcSize),
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        local num = tonumber(Text)
+        if num and num >= 2 and num <= 200 then
+            config.npcSize = num
+            updateAllHitboxes()
+            Rayfield:Notify({
+                Title = "NPC Size Updated",
+                Content = "NPC hitbox size set to " .. num,
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            Rayfield:Notify({
+                Title = "Invalid Input",
+                Content = "Please enter a number between 2 and 200",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Bypass Hitbox Detection",
+    CurrentValue = config.bypassDetection,
+    Flag = "BypassDetectionToggle",
+    Callback = function(Value)
+        config.bypassDetection = Value
+        updateAllHitboxes()
+        
+        if Value then
+            local methodsList = table.concat(config.bypassMethods, ", ")
+            Rayfield:Notify({
+                Title = "Bypass Enabled",
+                Content = "Using: "..methodsList,
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+MainTab:CreateDropdown({
+    Name = "Bypass Methods",
+    Options = bypassMethodsList,
+    CurrentOption = config.bypassMethods,
+    MultipleOptions = true,
+    Flag = "BypassMethodDropdown",
+    Callback = function(SelectedMethods)
+        config.bypassMethods = SelectedMethods
+        
+        if config.bypassDetection then
+            local methodsList = table.concat(SelectedMethods, ", ")
+            Rayfield:Notify({
+                Title = "Bypass Methods Changed",
+                Content = "Now using: "..methodsList,
+                Duration = 3,
+                Image = 4483362458
+            })
+            updateAllHitboxes()
+        end
+    end,
+})
+
+MainTab:CreateLabel("Bypass Techniques")
+MainTab:CreateParagraph({
+    Title = "Detection Evasion Methods",
+    Content = "Size Variation: Randomly scales hitbox size\nTransparency Variation: Randomly adjusts transparency\nPosition Offset: Slightly offsets hitbox position\nDynamic Scaling: Smoothly scales hitbox size over time"
+})
+
+MainTab:CreateToggle({
+    Name = "Invisible Hitboxes",
+    CurrentValue = config.invisibleHitbox,
+    Flag = "InvisibleHitboxToggle",
+    Callback = function(Value)
+        config.invisibleHitbox = Value
+        updateAllHitboxes()
+        
+        if Value then
+            Rayfield:Notify({
+                Title = "Invisible Hitboxes Enabled",
+                Content = "All hitboxes are now invisible",
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            Rayfield:Notify({
+                Title = "Invisible Hitboxes Disabled",
+                Content = "Hitboxes are now visible",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Legit Hitbox (No Wallbang)",
+    CurrentValue = config.legitMode,
+    Flag = "LegitModeToggle",
+    Callback = function(Value)
+        config.legitMode = Value
+        visibilityCache = {}
+        
+        if Value then
+            Rayfield:Notify({
+                Title = "Legit Mode Enabled",
+                Content = "Hitboxes will dynamically update based on visibility",
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            Rayfield:Notify({
+                Title = "Legit Mode Disabled",
+                Content = "Hitboxes will always be visible",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+        
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "Off-Wall Detection",
+    Range = {0, 1},
+    Increment = 0.1,
+    Suffix = "Threshold",
+    CurrentValue = config.offWallThreshold,
+    Flag = "OffWallSlider",
+    Callback = function(Value)
+        config.offWallThreshold = Value
+        Rayfield:Notify({
+            Title = "Off-Wall Detection Updated",
+            Content = "Threshold set to " .. Value,
+            Duration = 3,
+            Image = 4483362458
+        })
+    end,
+})
+
+local hitboxPartsOptions = {}
+for partName, _ in pairs(hitboxToggles) do
+    table.insert(hitboxPartsOptions, partName)
+end
+
+local defaultSelected = {}
+for partName, enabled in pairs(hitboxToggles) do
+    if enabled then
+        table.insert(defaultSelected, partName)
+    end
+end
+
+MainTab:CreateDropdown({
+    Name = "Hitbox Parts",
+    Options = hitboxPartsOptions,
+    CurrentOption = defaultSelected,
+    MultipleOptions = true,
+    Flag = "HitboxPartsDropdown",
+    Callback = function(selectedParts)
+        for partName, _ in pairs(hitboxToggles) do
+            hitboxToggles[partName] = false
+        end
+        for _, partName in ipairs(selectedParts) do
+            hitboxToggles[partName] = true
+        end
+        updateAllHitboxes()
+    end,
+})
+
+MainTab:CreateSection("RootPart Hitbox")
+
+MainTab:CreateToggle({
+    Name = "Attach to RootPart",
+    CurrentValue = config.attachToRoot,
+    Flag = "AttachRootToggle",
+    Callback = function(Value)
+        config.attachToRoot = Value
+        updateAllHitboxes()
+        
+        if Value then
+            Rayfield:Notify({
+                Title = "RootPart Hitbox Enabled",
+                Content = "Hitboxes are now attached to HumanoidRootPart",
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            Rayfield:Notify({
+                Title = "RootPart Hitbox Disabled",
+                Content = "Hitboxes are back on body parts",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "RootPart Size",
+    Range = {2, 200},
+    Increment = 1,
+    Suffix = "Size",
+    CurrentValue = config.rootSize,
+    Flag = "RootSizeSlider",
+    Callback = function(Value)
+        config.rootSize = Value
+        if config.attachToRoot then
+            updateAllHitboxes()
+        end
+    end,
+})
+
+MainTab:CreateParagraph({
+    Title = "RootPart Hitbox Info",
+    Content = "Attaches all hitboxes to the HumanoidRootPart instead of individual body parts. Provides a single large hitbox at the character's center."
+})
+
+local playerDropdown = FilterTab:CreateDropdown({
+    Name = "Exclude Players",
+    Options = getPlayerList(),
+    CurrentOption = "",
+    MultipleOptions = true,
+    Flag = "PlayerFilterDropdown",
+    Callback = function(Selected)
+        filters.excludedPlayers = {}
+        for _, playerName in ipairs(Selected) do
+            filters.excludedPlayers[playerName] = true
+        end
+        updateAllHitboxes()
+    end,
+})
+
+local teamDropdown = FilterTab:CreateDropdown({
+    Name = "Exclude Teams",
+    Options = getTeamList(),
+    CurrentOption = "",
+    MultipleOptions = true,
+    Flag = "TeamFilterDropdown",
+    Callback = function(Selected)
+        filters.excludedTeams = {}
+        for _, teamName in ipairs(Selected) do
+            filters.excludedTeams[teamName] = true
+        end
+        updateAllHitboxes()
+    end,
+})
+
+local forceIncludeDropdown = FilterTab:CreateDropdown({
+    Name = "Force Include Players",
+    Options = getPlayerList(),
+    CurrentOption = "",
+    MultipleOptions = true,
+    Flag = "ForceIncludeDropdown",
+    Callback = function(Selected)
+        filters.forceIncludedPlayers = {}
+        for _, playerName in ipairs(Selected) do
+            filters.forceIncludedPlayers[playerName] = true
+        end
+        updateAllHitboxes()
+    end,
+})
+
+FilterTab:CreateSection("Team-Based Filtering")
+FilterTab:CreateToggle({
+    Name = "Hide Teammates",
+    CurrentValue = config.hideTeammates,
+    Flag = "HideTeammatesToggle",
+    Callback = function(Value)
+        config.hideTeammates = Value
+        updateAllHitboxes()
+        
+        if Value then
+            Rayfield:Notify({
+                Title = "Team Filtering",
+                Content = "Hitboxes will be hidden for teammates",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end
+})
+
+FilterTab:CreateParagraph({
+    Title = "Hide Teammates Info",
+    Content = "When enabled, hitboxes will be disabled for players on your team. Automatically detects team relationships in various games."
+})
+
+FilterTab:CreateToggle({
+    Name = "Hide Hitbox When Player is Sitting",
+    CurrentValue = filters.hideWhenSitting,
+    Flag = "HideSittingToggle",
+    Callback = function(Value)
+        filters.hideWhenSitting = Value
+        updateAllHitboxes()
+    end
+})
+
+FilterTab:CreateToggle({
+    Name = "Hide Hitbox for Players with ForceField",
+    CurrentValue = filters.hideForceField,
+    Flag = "HideForceFieldToggle",
+    Callback = function(Value)
+        filters.hideForceField = Value
+        updateAllHitboxes()
+    end
+})
+
+FilterTab:CreateSection("Friend Filters")
+
+FilterTab:CreateToggle({
+    Name = "Hide Hitbox for Friends",
+    CurrentValue = filters.hideFriends,
+    Flag = "HideFriendsToggle",
+    Callback = function(Value)
+        filters.hideFriends = Value
+        updateAllHitboxes()
+    end
+})
+
+local friendDropdown = FilterTab:CreateDropdown({
+    Name = "Exclude Specific Friends",
+    Options = getFriendList(),
+    CurrentOption = {},
+    MultipleOptions = true,
+    Flag = "FriendFilterDropdown",
+    Callback = function(Selected)
+        filters.excludedFriends = {}
+        for _, friendName in ipairs(Selected) do
+            filters.excludedFriends[friendName] = true
+        end
+        updateAllHitboxes()
+    end,
+})
+
+local function refreshFriendDropdown()
+    local newFriendList = getFriendList()
+    
+    if Rayfield and Rayfield.Enabled then
+        friendDropdown:Refresh(newFriendList, true)
+    end
+end
+
+task.spawn(function()
+    while true do
+        refreshFriendDropdown()
+        task.wait(1)
+    end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    task.wait(0.5)
+    refreshFriendDropdown()
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    task.wait(0.1)
+    refreshFriendDropdown()
+end)
+
+LocalPlayer.FriendStatusChanged:Connect(function()
+    task.wait(0.3)
+    refreshFriendDropdown()
+end)
+
+FilterTab:CreateSection("NPC Filters")
+
+FilterTab:CreateToggle({
+    Name = "Hide All NPC Hitboxes",
+    CurrentValue = config.hideNPCHitboxes,
+    Flag = "HideAllNPCToggle",
+    Callback = function(Value)
+        config.hideNPCHitboxes = Value
+        updateAllHitboxes()
+    end
+})
+
+FilterTab:CreateToggle({
+    Name = "Hide Teammate NPCs",
+    CurrentValue = config.hideTeammateNPCs,
+    Flag = "HideTeammateNPCToggle",
+    Callback = function(Value)
+        config.hideTeammateNPCs = Value
+        updateAllHitboxes()
+    end
+})
+
+FilterTab:CreateSection("Zone Filters")
+
+FilterTab:CreateToggle({
+    Name = "Hide Greenzone/Safe Zones Hitboxes",
+    CurrentValue = config.hideGreenzone,
+    Flag = "HideGreenzoneToggle",
+    Callback = function(Value)
+        config.hideGreenzone = Value
+        updateAllHitboxes()
+        if Value then
+            Rayfield:Notify({
+                Title = "Zone Filter Activated",
+                Content = "Hitboxes hidden for Greenzone/Safe Zone players",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end
+})
+
+FilterTab:CreateParagraph({
+    Title = "Greenzone/Safe Zone Info",
+    Content = "Hides hitboxes for players/NPCs in teams with names containing 'green' or 'safe' (case-insensitive). Useful for games with safe zones."
+})
+
+FilterTab:CreateToggle({
+    Name = "Hide Workspace SafeZones And Greenzones",
+    CurrentValue = config.hideWorkspaceZones,
+    Flag = "HideWorkspaceZonesToggle",
+    Callback = function(Value)
+        config.hideWorkspaceZones = Value
+        updateAllHitboxes()
+        if Value then
+            Rayfield:Notify({
+                Title = "Workspace Zones Filter",
+                Content = "Hitboxes hidden for characters in workspace safe zones",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end
+})
+
+FilterTab:CreateParagraph({
+    Title = "Workspace Safe Zones Info",
+    Content = "Hides hitboxes for characters inside workspace objects named 'SafeZone', 'GreenZone', or similar. Useful for games with physical safe areas in the workspace."
+})
+
+FilterTab:CreateToggle({
+    Name = "Hide Hitbox If Player Has Infinite Health",
+    CurrentValue = config.hideInfiniteHealth,
+    Flag = "HideInfiniteHealthToggle",
+    Callback = function(Value)
+        config.hideInfiniteHealth = Value
+        updateAllHitboxes()
+        if Value then
+            Rayfield:Notify({
+                Title = "Infinite Health Filter",
+                Content = "Hitboxes will be hidden for players with infinite health",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end
+})
+
+FilterTab:CreateParagraph({
+    Title = "Infinite Health Detection",
+    Content = "Hides hitboxes for players with health values at or above 1e+300 (1 followed by 300 zeros). Useful against godmode players."
+})
+
+FilterTab:CreateSection("ESP Filters")
+
+FilterTab:CreateDropdown({
+    Name = "Exclude Teams from ESP",
+    Options = getTeamList(),
+    CurrentOption = "",
+    MultipleOptions = true,
+    Flag = "EspTeamFilterDropdown",
+    Callback = function(Selected)
+        espFilters.excludedTeams = {}
+        for _, teamName in ipairs(Selected) do
+            espFilters.excludedTeams[teamName] = true
+        end
+        updateAllEsp()
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Universal Aimbot",
+    Callback = function()
+       loadstring(game:HttpGet("https://raw.githubusercontent.com/Fuzzythegoatq/Cheat/refs/heads/main/Aimbot"))()
+        Rayfield:Notify({
+            Title = "Universal Aimbot Loaded",
+            Content = "Aimbot activated!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Auto Clicker",
+    Callback = function()
+        getgenv().key = "Hostile"
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Hosvile/The-telligence/main/MC%20KSystem%202"))()
+        Rayfield:Notify({
+            Title = "Auto Clicker Loaded",
+            Content = "Auto Clicker activated!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Shiftlock Script",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/prosadaf/Example/refs/heads/main/Video"))()
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Fly Script",
+    Callback = function()
+        loadstring(game:HttpGet(('https://pastebin.com/raw/TSjdP9mj'),true))()
+        Rayfield:Notify({
+            Title = "Fly Script Loaded",
+            Content = "Press 'E' to toggle flight!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Infinite Yield",
+    Callback = function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Adonis Bypasser",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua",true))()
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Abcde Bypasser",
+    Callback = function()
+        game:GetService("RunService").Heartbeat:Connect(function()
+            task.wait(0.1)
+            local char = game.Players.LocalPlayer.Character
+            if char and char:FindFirstChild("abcde") then
+                char.abcde:Destroy()
+            end
+        end)
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Instant Proximity",
+    Callback = function()
+        local ProximityPromptHoldDuration = 0
+        local ChangedObjects = {}
+
+        for _, ProximityObject in ipairs(workspace:GetDescendants()) do
+            if ProximityObject:IsA("ProximityPrompt") then
+                ChangedObjects[ProximityObject] = ProximityObject.HoldDuration
+                ProximityObject.HoldDuration = ProximityPromptHoldDuration
+            end
+        end
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Anti-Afk",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/KazeOnTop/Rice-Anti-Afk/main/Wind", true))()
+        Rayfield:Notify({
+            Title = "Anti-Afk Loaded",
+            Content = "Anti-Afk protection has been enabled!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Anti-Kick",
+    Callback = function()
+        local plr = game:GetService("Players").LocalPlayer
+
+        getgenv().Anti = true
+
+        local Anti
+        Anti = hookmetamethod(game, "__namecall", function(self, ...)
+                if self == plr and getnamecallmethod():lower() == "kick" and getgenv().Anti then
+                    return warn("[ANTI-KICK] Client Tried To Call Kick Function On LocalPlayer")
+                end
+                return Anti(self, ...)
+            end)
+
+        Rayfield:Notify({
+            Title = "Anti-Kick Loaded",
+            Content = "Kick protection has been enabled!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Semi-VC Ban Bypass",
+    Callback = function()
+        game:GetService("VoiceChatService"):joinVoice()
+        Rayfield:Notify({
+            Title = "VC Ban Bypass Attempted",
+            Content = "Voice chat join requested. May work in some games.",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateSection("Certain Scripts For Games")
+
+ScriptTab:CreateButton({
+    Name = "Load Westbound Admin",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Drrushh/Drrushh/main/Kdom",true))()
+        Rayfield:Notify({
+            Title = "Westbound Admin Loaded",
+            Content = "Admin commands activated for Westbound!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Westbound Autofarm",
+    Callback = function()
+        loadstring(game:HttpGet("https://pastebin.com/raw/36HeM3kz",true))()
+        Rayfield:Notify({
+            Title = "Westbound Autofarm Loaded",
+            Content = "Autofarm activated for Westbound!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateButton({
+    Name = "Load Cata Killstreak Sword Fighting Script",
+    Callback = function()
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+        local player = Players.LocalPlayer
+
+        local autoDamageEnabled = false
+        local radius = 100
+        local interval = 0.1
+        local lastDamage = 0
+        local freeAllSword = false
+
+        local field = Instance.new("Part")
+        field.Size = Vector3.new(radius * 2, radius * 2, radius * 2)
+        field.Shape = Enum.PartType.Ball
+        field.Transparency = 1
+        field.Anchored = true
+        field.CanCollide = false
+        field.Name = "DamageField"
+        field.Parent = workspace
+
+        local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+        gui.Name = "KennedyGui"
+        gui.ResetOnSpawn = false
+
+        local toggleBtn = Instance.new("TextButton", gui)
+        toggleBtn.Size = UDim2.new(0, 40, 0, 40)
+        toggleBtn.Position = UDim2.new(0, 10, 0, 10)
+        toggleBtn.Text = "="
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+        toggleBtn.Font = Enum.Font.SourceSansBold
+        toggleBtn.TextSize = 24
+        Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
+
+        local main = Instance.new("Frame", gui)
+        main.Size = UDim2.new(0, 300, 0, 300)
+        main.Position = UDim2.new(0, 60, 0, 80)
+        main.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        main.Visible = false
+        main.Active = true
+        main.Draggable = true
+        Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+
+        local title = Instance.new("TextLabel", main)
+        title.Size = UDim2.new(1, 0, 0, 35)
+        title.Position = UDim2.new(0, 0, 0, -40)
+        title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        title.BorderSizePixel = 0
+        title.Text = "Ã°ÂÂÂ¥ BY KENNEDY Ã°ÂÂÂ¥\nCredits: KENNEDY & CORYGUNZJR"
+        title.TextColor3 = Color3.new(1, 1, 1)
+        title.TextStrokeTransparency = 0
+        title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        title.Font = Enum.Font.SourceSansBold
+        title.TextSize = 16
+        title.TextWrapped = true
+        Instance.new("UICorner", title).CornerRadius = UDim.new(0, 6)
+
+        local tabKillAura = Instance.new("TextButton", main)
+        tabKillAura.Size = UDim2.new(0, 140, 0, 30)
+        tabKillAura.Position = UDim2.new(0, 10, 0, 10)
+        tabKillAura.Text = "KILL AURA SWORD"
+        tabKillAura.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        tabKillAura.TextColor3 = Color3.new(1, 1, 1)
+        Instance.new("UICorner", tabKillAura).CornerRadius = UDim.new(0, 6)
+
+        local tabKSF = Instance.new("TextButton", main)
+        tabKSF.Size = UDim2.new(0, 140, 0, 30)
+        tabKSF.Position = UDim2.new(0, 150, 0, 10)
+        tabKSF.Text = "C:KSF"
+        tabKSF.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        tabKSF.TextColor3 = Color3.new(1, 1, 1)
+        Instance.new("UICorner", tabKSF).CornerRadius = UDim.new(0, 6)
+
+        local pageAura = Instance.new("Frame", main)
+        pageAura.Size = UDim2.new(1, -20, 1, -50)
+        pageAura.Position = UDim2.new(0, 10, 0, 50)
+        pageAura.BackgroundTransparency = 1
+        pageAura.Visible = true
+
+        local pageKSF = pageAura:Clone()
+        pageKSF.Parent = main
+        pageKSF.Visible = false
+
+        local function createButton(text, posY, parent)
+            local btn = Instance.new("TextButton", parent)
+            btn.Size = UDim2.new(0, 260, 0, 30)
+            btn.Position = UDim2.new(0, 10, 0, posY)
+            btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            btn.TextColor3 = Color3.new(1, 1, 1)
+            btn.Text = text
+            btn.Font = Enum.Font.SourceSans
+            btn.TextSize = 18
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+            return btn
+        end
+
+        local btnToggleAura = createButton("Enable Damage Field", 0, pageAura)
+        local btnIncreaseRadius = createButton("Increase Radius (+50)", 40, pageAura)
+        local btnDecreaseRadius = createButton("Decrease Radius (-50)", 80, pageAura)
+        local btnIncreaseSpeed = createButton("Increase Speed", 120, pageAura)
+        local btnDecreaseSpeed = createButton("Decrease Speed", 160, pageAura)
+
+        local btnFreeSword = createButton("FREE ALL SWORD: (OFF)", 0, pageKSF)
+
+        local function applyDamage(tool, target)
+            if tool and target and tool:FindFirstChild("Handle") and target:FindFirstChild("HumanoidRootPart") then
+                firetouchinterest(tool.Handle, target.HumanoidRootPart, 0)
+                firetouchinterest(tool.Handle, target.HumanoidRootPart, 1)
+            end
+        end
+
+        RunService.Heartbeat:Connect(function()
+            if not autoDamageEnabled then return end
+            if tick() - lastDamage < interval then return end
+
+            local char = player.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local tool = char:FindFirstChildWhichIsA("Tool")
+            if not tool then return end
+
+            field.Position = hrp.Position
+            field.Size = Vector3.new(radius * 2, radius * 2, radius * 2)
+
+            for _, npc in ipairs(workspace:GetDescendants()) do
+                if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc:FindFirstChild("HumanoidRootPart") then
+                    if not Players:GetPlayerFromCharacter(npc) then
+                        local dist = (npc.HumanoidRootPart.Position - field.Position).Magnitude
+                        if dist <= radius then
+                            applyDamage(tool, npc)
+                        end
+                    end
+                end
+            end
+
+            lastDamage = tick()
+        end)
+
+        toggleBtn.MouseButton1Click:Connect(function()
+            main.Visible = not main.Visible
+        end)
+
+        tabKillAura.MouseButton1Click:Connect(function()
+            pageAura.Visible = true
+            pageKSF.Visible = false
+        end)
+
+        tabKSF.MouseButton1Click:Connect(function()
+            pageAura.Visible = false
+            pageKSF.Visible = true
+        end)
+
+        btnToggleAura.MouseButton1Click:Connect(function()
+            autoDamageEnabled = not autoDamageEnabled
+            btnToggleAura.Text = autoDamageEnabled and "Disable Damage Field" or "Enable Damage Field"
+        end)
+
+        btnIncreaseRadius.MouseButton1Click:Connect(function()
+            radius += 50
+            btnIncreaseRadius.Text = "Radius: " .. radius
+        end)
+
+        btnDecreaseRadius.MouseButton1Click:Connect(function()
+            radius = math.max(50, radius - 50)
+            btnDecreaseRadius.Text = "Radius: " .. radius
+        end)
+
+        btnIncreaseSpeed.MouseButton1Click:Connect(function()
+            interval = math.max(0.02, interval - 0.02)
+            btnIncreaseSpeed.Text = string.format("Speed: %.2fs", interval)
+        end)
+
+        btnDecreaseSpeed.MouseButton1Click:Connect(function()
+            interval = math.min(1, interval + 0.02)
+            btnDecreaseSpeed.Text = string.format("Speed: %.2fs", interval)
+        end)
+
+        local function unlockSwords()
+            local gui = player:FindFirstChild("PlayerGui")
+            if not gui then return end
+            local equip = gui:FindFirstChild("Equip")
+            if not equip then return end
+            local settingsFrame = equip:FindFirstChild("SettingsFrame")
+            if not settingsFrame then return end
+            settingsFrame.Visible = true
+            for _, d in pairs(settingsFrame:GetDescendants()) do
+                if d:IsA("ImageLabel") or d:IsA("TextLabel") or d:IsA("Frame") or d:IsA("TextButton") then
+                    if d.Name:lower():find("lock") or (d:IsA("ImageLabel") and d.Image:lower():find("lock")) then
+                        d.Visible = false
+                    else
+                        d.Visible = true
+                    end
+                end
+            end
+        end
+
+        btnFreeSword.MouseButton1Click:Connect(function()
+            freeAllSword = not freeAllSword
+            btnFreeSword.Text = "FREE ALL SWORD: " .. (freeAllSword and "(ON)" or "(OFF)")
+            if freeAllSword then
+                unlockSwords()
+            end
+        end)
+
+        player.CharacterAdded:Connect(function()
+            if freeAllSword then
+                task.wait(1.5)
+                unlockSwords()
+            end
+        end)
+        
+        Rayfield:Notify({
+            Title = "Cata Killstreak Sword Fighting Script Loaded",
+            Content = "Script activated! GUI should appear shortly.",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateSection("Walkspeed Changer (Detected in most games)")
+
+local walkspeedConfig = {
+    enabled = false,
+    speed = 16
+}
+
+ScriptTab:CreateInput({
+    Name = "Walkspeed Value",
+    PlaceholderText = tostring(walkspeedConfig.speed),
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        local num = tonumber(Text)
+        if num and num > 0 then
+            walkspeedConfig.speed = num
+            Rayfield:Notify({
+                Title = "Walkspeed Set",
+                Content = "Walkspeed set to " .. num,
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            Rayfield:Notify({
+                Title = "Invalid Input",
+                Content = "Please enter a positive number",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+ScriptTab:CreateToggle({
+    Name = "Enable Walkspeed Changer",
+    CurrentValue = walkspeedConfig.enabled,
+    Flag = "WalkSpeedToggle",
+    Callback = function(Value)
+        walkspeedConfig.enabled = Value
+    end,
+})
+
+local function applyWalkspeed()
+    if not walkspeedConfig.enabled then return end
+    
+    local char = LocalPlayer.Character
+    if char then
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            pcall(function()
+                humanoid.WalkSpeed = walkspeedConfig.speed
+            end)
+        end
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if walkspeedConfig.enabled then
+        char:WaitForChild("Humanoid", 5)
+        applyWalkspeed()
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if walkspeedConfig.enabled then
+            applyWalkspeed()
+        end
+        task.wait(0.1)
+    end
+end)
+
+ScriptTab:CreateSection("Teleport Walkspeed (Less detectable)")
+
+local tpWalkConfig = {
+    enabled = false,
+    value = 1,
+    allowNegative = false
+}
+
+ScriptTab:CreateInput({
+    Name = "Tpwalk Value",
+    PlaceholderText = tostring(tpWalkConfig.value),
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        local num = tonumber(Text)
+        if num then
+            if tpWalkConfig.allowNegative then
+                if num ~= 0 then
+                    tpWalkConfig.value = num
+                    Rayfield:Notify({
+                        Title = "Tpwalk Set",
+                        Content = "Tpwalk value set to " .. num,
+                        Duration = 3,
+                        Image = 4483362458
+                    })
+                else
+                    Rayfield:Notify({
+                        Title = "Invalid Value",
+                        Content = "Tpwalk value cannot be zero",
+                        Duration = 3,
+                        Image = 4483362458
+                    })
+                end
+            else
+                if num > 0 then
+                    tpWalkConfig.value = num
+                    Rayfield:Notify({
+                        Title = "Tpwalk Set",
+                        Content = "Tpwalk value set to " .. num,
+                        Duration = 3,
+                        Image = 4483362458
+                    })
+                else
+                    Rayfield:Notify({
+                        Title = "Invalid Value",
+                        Content = "Tpwalk value must be positive",
+                        Duration = 3,
+                        Image = 4483362458
+                    })
+                end
+            end
+        else
+            Rayfield:Notify({
+                Title = "Invalid Input",
+                Content = "Please enter a valid number",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+ScriptTab:CreateToggle({
+    Name = "Allow Negative Values",
+    CurrentValue = tpWalkConfig.allowNegative,
+    Flag = "TpwalkAllowNegative",
+    Callback = function(Value)
+        tpWalkConfig.allowNegative = Value
+        if not Value and tpWalkConfig.value <= 0 then
+            tpWalkConfig.value = 1
+            Rayfield:Notify({
+                Title = "Tpwalk Reset",
+                Content = "Tpwalk value reset to 1",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+ScriptTab:CreateToggle({
+    Name = "Enable Tpwalk",
+    CurrentValue = tpWalkConfig.enabled,
+    Flag = "TpwalkToggle",
+    Callback = function(Value)
+        tpWalkConfig.enabled = Value
+    end,
+})
+
+local function applyTpWalk()
+    if tpWalkConfig.enabled and LocalPlayer.Character then
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        local rootPart = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        
+        if humanoid and rootPart then
+            rootPart.CFrame = rootPart.CFrame + (humanoid.MoveDirection * tpWalkConfig.value)
+        end
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    char:WaitForChild("Humanoid", 5)
+    char:WaitForChild("HumanoidRootPart", 5)
+end)
+
+task.spawn(function()
+    while true do
+        if tpWalkConfig.enabled then
+            applyTpWalk()
+        end
+        task.wait()
+    end
+end)
+
+ScriptTab:CreateSection("External Noclip Script")
+
+ScriptTab:CreateButton({
+    Name = "Load External Noclip Script",
+    Callback = function()
+        loadstring(game:HttpGet("https://pastefy.app/HoSmO4NX/raw"))()
+        Rayfield:Notify({
+            Title = "Noclip Script Loaded",
+            Content = "External noclip script activated!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end,
+})
+
+ScriptTab:CreateParagraph({
+    Title = "About This Script",
+    Content = "This external noclip script provides an alternative implementation to the built-in noclip toggle. It may work better in some games."
+})
+
+ScriptTab:CreateSection("Noclip Toggle")
+
+local noclipEnabled = false
+local noclipConnection = nil
+
+local function applyNoclip(char)
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+end
+
+ScriptTab:CreateToggle({
+    Name = "Enable Noclip",
+    CurrentValue = noclipEnabled,
+    Flag = "NoclipToggle",
+    Callback = function(Value)
+        noclipEnabled = Value
+        
+        if Value then
+            if LocalPlayer.Character then
+                applyNoclip(LocalPlayer.Character)
+            end
+            
+            if not noclipConnection then
+                noclipConnection = RunService.Heartbeat:Connect(function()
+                    if noclipEnabled and LocalPlayer.Character then
+                        applyNoclip(LocalPlayer.Character)
+                    end
+                end)
+            end
+            
+            Rayfield:Notify({
+                Title = "Noclip Enabled",
+                Content = "You can now walk through walls",
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            if noclipConnection then
+                noclipConnection:Disconnect()
+                noclipConnection = nil
+            end
+            
+            Rayfield:Notify({
+                Title = "Noclip Disabled",
+                Content = "Collision restored",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+ScriptTab:CreateKeybind({
+    Name = "Toggle Noclip",
+    CurrentKeybind = "N",
+    HoldToInteract = false,
+    Flag = "NoclipKeybind",
+    Callback = function(Key)
+        noclipEnabled = not noclipEnabled
+        ScriptTab.Flags["NoclipToggle"].Callback(noclipEnabled)
+    end,
+})
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if noclipEnabled then
+        task.wait(0.1)
+        applyNoclip(char)
+    end
+end)
+
+EspTab:CreateToggle({
+    Name = "Enable ESP",
+    CurrentValue = espConfig.enabled,
+    Flag = "EspToggle",
+    Callback = function(Value)
+        espConfig.enabled = Value
+        updateAllEsp()
+    end,
+})
+
+EspTab:CreateSection("Keybinds")
+
+EspTab:CreateKeybind({
+    Name = "Toggle ESP",
+    CurrentKeybind = "C",
+    HoldToInteract = false,
+    Flag = "EspToggleKeybind",
+    Callback = function(Key)
+        espConfig.enabled = not espConfig.enabled
+        updateAllEsp()
+        Rayfield:Notify({
+            Title = "ESP System",
+            Content = "ESP is now " .. (espConfig.enabled and "ENABLED" or "DISABLED"),
+            Duration = 3,
+            Image = 4483362458
+        })
+    end,
+})
+
+EspTab:CreateSection("Body ESP")
+
+EspTab:CreateToggle({
+    Name = "Enable Body ESP",
+    CurrentValue = espConfig.bodyEsp,
+    Flag = "BodyEspToggle",
+    Callback = function(Value)
+        espConfig.bodyEsp = Value
+        updateAllEsp()
+    end,
+})
+
+EspTab:CreateColorPicker({
+    Name = "Body ESP Color",
+    Color = espConfig.bodyColor,
+    Flag = "BodyColorPicker",
+    Callback = function(Value)
+        espConfig.bodyColor = Value
+        updateAllEsp()
+    end
+})
+
+local bodyPartOptions = {
+    "Head",
+    "Torso",
+    "Left Arm",
+    "Right Arm",
+    "Left Leg",
+    "Right Leg"
+}
+
+local selectedBodyParts = {}
+for partName, enabled in pairs(espConfig.bodyParts) do
+    if enabled then
+        table.insert(selectedBodyParts, partName)
+    end
+end
+
+EspTab:CreateDropdown({
+    Name = "Body Parts to Highlight",
+    Options = bodyPartOptions,
+    CurrentOption = selectedBodyParts,
+    MultipleOptions = true,
+    Flag = "BodyPartsDropdown",
+    Callback = function(Selected)
+        for partName, _ in pairs(espConfig.bodyParts) do
+            espConfig.bodyParts[partName] = false
+        end
+        
+        for _, partName in ipairs(Selected) do
+            espConfig.bodyParts[partName] = true
+        end
+        
+        updateAllEsp()
+    end,
+})
+
+EspTab:CreateParagraph({
+    Title = "Body ESP Information",
+    Content = "Highlights specific body parts on the actual character model. Select which parts to highlight using the dropdown above."
+})
+
+EspTab:CreateDropdown({
+    Name = "Exclude Players from ESP",
+    Options = getPlayerList(),
+    CurrentOption = "",
+    MultipleOptions = true,
+    Flag = "EspPlayerFilterDropdown",
+    Callback = function(Selected)
+        espFilters.excludedPlayers = {}
+        for _, playerName in ipairs(Selected) do
+            espFilters.excludedPlayers[playerName] = true
+        end
+        updateAllEsp()
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "Show Player Teams",
+    CurrentValue = espConfig.teamEnabled,
+    Flag = "TeamEspToggle",
+    Callback = function(Value)
+        espConfig.teamEnabled = Value
+        for player, data in pairs(espData.players) do
+            if data.billboard and data.billboard:FindFirstChild("TeamLabel") then
+                data.billboard.TeamLabel.Visible = Value
+            end
+        end
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "Show Player Names",
+    CurrentValue = espConfig.nameEnabled,
+    Flag = "NameEspToggle",
+    Callback = function(Value)
+        espConfig.nameEnabled = Value
+        for player, data in pairs(espData.players) do
+            if data.billboard and data.billboard:FindFirstChild("NameLabel") then
+                data.billboard.NameLabel.Visible = Value
+            end
+        end
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "Show Health",
+    CurrentValue = espConfig.healthEnabled,
+    Flag = "HealthEspToggle",
+    Callback = function(Value)
+        espConfig.healthEnabled = Value
+        for player, data in pairs(espData.players) do
+            if data.billboard and data.billboard:FindFirstChild("HealthLabel") then
+                data.billboard.HealthLabel.Visible = Value
+            end
+        end
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "Highlight Players",
+    CurrentValue = espConfig.highlightEnabled,
+    Flag = "HighlightEspToggle",
+    Callback = function(Value)
+        espConfig.highlightEnabled = Value
+        for player, data in pairs(espData.players) do
+            if data.highlight then
+                data.highlight.Enabled = Value
+            end
+        end
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "Item ESP",
+    CurrentValue = espConfig.itemEspEnabled,
+    Flag = "ItemEspToggle",
+    Callback = function(Value)
+        espConfig.itemEspEnabled = Value
+        updateItemEsp()
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "Show Held Items",
+    CurrentValue = espConfig.heldItemEnabled,
+    Flag = "HeldItemToggle",
+    Callback = function(Value)
+        espConfig.heldItemEnabled = Value
+        for player, data in pairs(espData.players) do
+            if data.billboard and data.billboard:FindFirstChild("HeldItemLabel") then
+                data.billboard.HeldItemLabel.Visible = Value
+            end
+        end
+    end,
+})
+
+EspTab:CreateColorPicker({
+    Name = "Highlight Color",
+    Color = espConfig.highlightColor,
+    Flag = "HighlightColorPicker",
+    Callback = function(Value)
+        espConfig.highlightColor = Value
+        for player, data in pairs(espData.players) do
+            if data.highlight then
+                data.highlight.FillColor = Value
+                data.highlight.OutlineColor = Value
+            end
+        end
+    end
+})
+
+EspTab:CreateColorPicker({
+    Name = "Text Color",
+    Color = espConfig.textColor,
+    Flag = "TextColorPicker",
+    Callback = function(Value)
+        espConfig.textColor = Value
+        for player, data in pairs(espData.players) do
+            if data.billboard then
+                if data.billboard:FindFirstChild("NameLabel") then
+                    data.billboard.NameLabel.TextColor3 = Value
+                end
+                if data.billboard:FindFirstChild("HealthLabel") then
+                    data.billboard.HealthLabel.TextColor3 = Value
+                end
+            end
+        end
+    end
+})
+
+EspTab:CreateColorPicker({
+    Name = "Team Text Color",
+    Color = espConfig.teamColor,
+    Flag = "TeamColorPicker",
+    Callback = function(Value)
+        espConfig.teamColor = Value
+        for player, data in pairs(espData.players) do
+            if data.billboard and data.billboard:FindFirstChild("TeamLabel") then
+                data.billboard.TeamLabel.TextColor3 = Value
+            end
+        end
+    end
+})
+
+EspTab:CreateColorPicker({
+    Name = "Item Color",
+    Color = espConfig.itemColor,
+    Flag = "ItemColorPicker",
+    Callback = function(Value)
+        espConfig.itemColor = Value
+        for item, itemData in pairs(espData.items) do
+            if itemData.highlight then
+                itemData.highlight.FillColor = Value
+                itemData.highlight.OutlineColor = Value
+            end
+            if itemData.billboard and itemData.billboard:FindFirstChild("ItemLabel") then
+                itemData.billboard.ItemLabel.TextColor3 = Value
+            end
+        end
+    end
+})
+
+EspTab:CreateColorPicker({
+    Name = "Held Item Color",
+    Color = espConfig.heldItemColor,
+    Flag = "HeldItemColorPicker",
+    Callback = function(Value)
+        espConfig.heldItemColor = Value
+        for player, data in pairs(espData.players) do
+            if data.billboard and data.billboard:FindFirstChild("HeldItemLabel") then
+                data.billboard.HeldItemLabel.TextColor3 = Value
+            end
+        end
+    end
+})
+
+local itemList = {"Gun", "Sword", "Ammo", "HealthPack", "Coin", "Key", "Armor", "Shield"}
+
+EspTab:CreateDropdown({
+    Name = "Tracked Items",
+    Options = itemList,
+    CurrentOption = espConfig.trackedItems,
+    MultipleOptions = true,
+    Flag = "TrackedItemsDropdown",
+    Callback = function(Selected)
+        espConfig.trackedItems = Selected
+        
+        for item, itemData in pairs(espData.items) do
+            if itemData.highlight then itemData.highlight:Destroy() end
+            if itemData.billboard then itemData.billboard:Destroy() end
+        end
+        espData.items = {}
+        
+        if espConfig.itemEspEnabled and espConfig.enabled then
+            updateItemEsp()
+        end
+    end,
+})
+
+EspTab:CreateInput({
+    Name = "Add Custom Item",
+    PlaceholderText = "Item Name",
+    RemoveTextAfterFocusLost = true,
+    Callback = function(Text)
+        if Text and Text ~= "" then
+            local exists = false
+            for _, name in ipairs(espConfig.trackedItems) do
+                if name:lower() == Text:lower() then
+                    exists = true
+                    break
+                end
+            end
+            
+            if not exists then
+                table.insert(espConfig.trackedItems, Text)
+                if espConfig.itemEspEnabled and espConfig.enabled then
+                    updateItemEsp()
+                end
+                Rayfield:Notify({
+                    Title = "Item Added",
+                    Content = "Added '" .. Text .. "' to tracked items",
+                    Duration = 3,
+                    Image = 4483362458
+                })
+            else
+                Rayfield:Notify({
+                    Title = "Item Already Exists",
+                    Content = "'" .. Text .. "' is already in tracked items",
+                    Duration = 3,
+                    Image = 4483362458
+                })
+            end
+        end
+    end,
+})
+
+CreditsTab:CreateSection("Development Team")
+CreditsTab:CreateLabel("Lead Developer: Draco")
+CreditsTab:CreateLabel("Ul Framework: Rayfield Interface Suite")
+
+CreditsTab:CreateParagraph({
+    Title = "About This Project",
+    Content = "Universal Hitbox Expander is designed to work across multiple games with advanced features like team detection, NPC support, ESP, and anti-detection techniques."
+})
+
+CreditsTab:CreateSection("Special Thanks to the following")
+CreditsTab:CreateLabel("Testing Team: oblivioustb, spzllzk, newdaverepublic")
+
+Players.PlayerAdded:Connect(function()
+    playerDropdown:Refresh(getPlayerList(), true)
+    forceIncludeDropdown:Refresh(getPlayerList(), true)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if monitoredPlayers[player] then
+        local char = player.Character
+        if char then
+            for _, partsList in pairs(hitboxPartsMap) do
+                for _, partName in ipairs(partsList) do
+                    local part = char:FindFirstChild(partName)
+                    if part then
+                        resetPart(part)
+                    end
+                end
+            end
+        end
+        monitoredPlayers[player] = nil
+        visibilityCache[player] = nil
+    end
+    playerDropdown:Refresh(getPlayerList(), true)
+    forceIncludeDropdown:Refresh(getPlayerList(), true)
+end)
+
+Teams.ChildAdded:Connect(function()
+    teamDropdown:Refresh(getTeamList(), true)
+end)
+
+Teams.ChildRemoved:Connect(function()
+    teamDropdown:Refresh(getTeamList(), true)
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        applyHitbox(player)
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LocalPlayer then
+        applyHitbox(player)
+    end
+end)
+
+setupNPCMonitoring()
+
+RunService.Heartbeat:Connect(function()
+    local camera = Workspace.CurrentCamera
+    if not camera then return end
+    local origin = camera.CFrame.Position
+
+    local ignoreList = {camera}
+    if LocalPlayer.Character then
+        table.insert(ignoreList, LocalPlayer.Character)
+    end
+    sharedRaycastParams.FilterDescendantsInstances = ignoreList
+
+    for player, _ in pairs(monitoredPlayers) do
+        local char = player.Character
+        visibilityCache[player] = false
+        if char then
+            if config.legitMode then
+                visibilityCache[player] = isAnyBodyPartVisible(char, origin, sharedRaycastParams)
+            else
+                visibilityCache[player] = true
+            end
+        end
+        applyHitbox(player)
+    end
+
+    for model, _ in pairs(npcTracker.activeNPCs) do
+        visibilityCache[model] = false
+        if config.legitMode and config.npcEnabled then
+            local rootPart = model:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                visibilityCache[model] = isPartVisible(rootPart, origin, sharedRaycastParams)
+            end
+        end
+        applyNPCHitbox(model)
+    end
+
+    if espConfig.enabled then
+        updateAllEsp()
+    end
+    
+    if walkspeedConfig.enabled then
+        applyWalkspeed()
+    end
+    
+    if tpWalkConfig.enabled then
+        applyTpWalk()
+    end
+end)
+
+Rayfield:ShowWindow()
+
+game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
+        Rayfield:ToggleWindow()
+    end
+end)
+
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "Hitbox Expander",
+    Text = "Press Right Shift to toggle UI",
+    Duration = 5
+})
